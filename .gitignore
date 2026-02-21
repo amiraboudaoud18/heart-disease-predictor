@@ -1,0 +1,30 @@
+# Python
+venv/
+__pycache__/
+*.pyc
+*.pyo
+.pytest_cache/
+*.egg-info/
+
+# Environment variables
+.env
+.env.development
+.env.staging
+.env.production
+
+# Data (tracked by DVC, not Git)
+data/
+
+# Models
+models/
+
+# MLflow
+mlruns/
+
+# OS
+.DS_Store
+
+# Node
+node_modules/
+frontend/.next/
+frontend/build/

@@ -1,0 +1,16 @@
+repos:
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: v0.3.0
+    hooks:
+      - id: ruff
+        args: [--fix]
+      - id: ruff-format
+
+  - repo: local
+    hooks:
+      - id: run-tests
+        name: Run unit tests
+        entry: bash -c 'cd backend && python -m pytest tests/test_unit.py -v'
+        language: system
+        pass_filenames: false
+        stages: [push]
