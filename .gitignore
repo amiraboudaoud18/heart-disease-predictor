@@ -13,7 +13,9 @@ __pycache__/
 .env.production
 
 # Data (tracked by DVC, not Git)
-data/
+data/*
+!data/*.dvc
+!data/.gitignore
 
 # Models
 models/
