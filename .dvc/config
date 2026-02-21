@@ -1,0 +1,4 @@
+[core]
+    remote = origin
+['remote "origin"']
+    url = https://dagshub.com/amiraboudaoud18/heart-disease-predictor.dvc
