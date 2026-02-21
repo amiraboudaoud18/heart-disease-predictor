@@ -13,4 +13,4 @@ repos:
         entry: bash -c 'cd backend && python -m pytest tests/test_unit.py -v'
         language: system
         pass_filenames: false
-        stages: [push]
+        stages: [pre-push]
