@@ -1,0 +1,10 @@
+name: Dev to Staging
+on:
+  push:
+    branches: [staging]
+jobs:
+  placeholder:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Placeholder
+        run: echo "CI pipeline coming soon"
