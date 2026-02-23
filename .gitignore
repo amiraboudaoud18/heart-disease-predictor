@@ -30,3 +30,8 @@ mlruns/
 node_modules/
 frontend/.next/
 frontend/build/
+# Vite cache
+frontend/.vite/
+
+# npm
+package-lock.json
