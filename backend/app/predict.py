@@ -5,7 +5,6 @@ from pathlib import Path
 
 import mlflow
 import mlflow.sklearn
-import numpy as np
 from dotenv import load_dotenv
 
 env_path = Path(__file__).parent.parent.parent / ".env.development"
@@ -59,8 +58,10 @@ def _initialize():
 def predict(features: dict) -> dict:
     _initialize()
 
-    input_array = np.array([[features[f] for f in _feature_names]])
-    input_scaled = _scaler.transform(input_array)
+    import pandas as pd
+
+    input_df = pd.DataFrame([features], columns=_feature_names)
+    input_scaled = _scaler.transform(input_df)
 
     prediction = _model.predict(input_scaled)
     probability = _model.predict_proba(input_scaled)[0][1]
