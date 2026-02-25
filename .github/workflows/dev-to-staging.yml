@@ -1,10 +1,122 @@
 name: Dev to Staging
+
 on:
   push:
     branches: [staging]
+
 jobs:
-  placeholder:
+  test:
     runs-on: ubuntu-latest
+
     steps:
-      - name: Placeholder
-        run: echo "CI pipeline coming soon"
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install dependencies
+        run: |
+          pip install -r backend/requirements.txt
+          pip install pytest httpx
+
+      - name: Run full test suite
+        env:
+          MLFLOW_TRACKING_URI: ${{ secrets.MLFLOW_TRACKING_URI }}
+          MLFLOW_TRACKING_USERNAME: ${{ secrets.MLFLOW_TRACKING_USERNAME }}
+          MLFLOW_TRACKING_PASSWORD: ${{ secrets.DAGSHUB_TOKEN }}
+          MODEL_NAME: ${{ secrets.MODEL_NAME }}
+          MODEL_STAGE: ${{ secrets.MODEL_STAGE }}
+        run: |
+          cd backend
+          python -m pytest tests/ -v
+
+  build-and-push:
+    needs: test
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Login to DockerHub
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      - name: Build and push backend (staging)
+        uses: docker/build-push-action@v5
+        with:
+          context: ./backend
+          push: true
+          tags: ${{ secrets.DOCKERHUB_USERNAME }}/heart-disease-backend:staging
+
+      - name: Build and push frontend (staging)
+        uses: docker/build-push-action@v5
+        with:
+          context: ./frontend
+          push: true
+          tags: ${{ secrets.DOCKERHUB_USERNAME }}/heart-disease-frontend:staging
+          build-args: |
+            VITE_BACKEND_URL=${{ secrets.STAGING_BACKEND_URL }}
+
+  model-promotion:
+    needs: build-and-push
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install MLflow
+        run: pip install mlflow dagshub
+
+      - name: Run quality gate
+        env:
+          MLFLOW_TRACKING_URI: ${{ secrets.MLFLOW_TRACKING_URI }}
+          MLFLOW_TRACKING_USERNAME: ${{ secrets.MLFLOW_TRACKING_USERNAME }}
+          MLFLOW_TRACKING_PASSWORD: ${{ secrets.DAGSHUB_TOKEN }}
+          MODEL_NAME: ${{ secrets.MODEL_NAME }}
+          ACCURACY_THRESHOLD: "0.75"
+        run: |
+          python - << 'EOF'
+          import os
+          import sys
+          import mlflow
+          from mlflow.tracking import MlflowClient
+
+          mlflow.set_tracking_uri(os.environ["MLFLOW_TRACKING_URI"])
+          os.environ["MLFLOW_TRACKING_USERNAME"] = os.environ["MLFLOW_TRACKING_USERNAME"]
+          os.environ["MLFLOW_TRACKING_PASSWORD"] = os.environ["MLFLOW_TRACKING_PASSWORD"]
+
+          client = MlflowClient()
+          model_name = os.environ["MODEL_NAME"]
+          threshold = float(os.environ["ACCURACY_THRESHOLD"])
+
+          # Get latest production model metrics
+          versions = client.get_latest_versions(model_name, stages=["Production"])
+          if not versions:
+              print("No Production model found!")
+              sys.exit(1)
+
+          run_id = versions[0].run_id
+          run = client.get_run(run_id)
+          accuracy = run.data.metrics.get("accuracy", 0)
+
+          print(f"Model accuracy: {accuracy:.4f}")
+          print(f"Threshold: {threshold}")
+
+          if accuracy >= threshold:
+              print("Quality gate PASSED")
+          else:
+              print(f"Quality gate FAILED: {accuracy:.4f} < {threshold}")
+              sys.exit(1)
+          EOF

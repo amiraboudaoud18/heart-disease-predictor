@@ -1,10 +1,62 @@
 name: Staging to Main
+
 on:
   push:
     branches: [main]
+
 jobs:
-  placeholder:
+  deploy-production:
     runs-on: ubuntu-latest
+
     steps:
-      - name: Placeholder
-        run: echo "CI pipeline coming soon"
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Login to DockerHub
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      - name: Promote staging images to production
+        run: |
+          docker pull ${{ secrets.DOCKERHUB_USERNAME }}/heart-disease-backend:staging
+          docker tag ${{ secrets.DOCKERHUB_USERNAME }}/heart-disease-backend:staging \
+                     ${{ secrets.DOCKERHUB_USERNAME }}/heart-disease-backend:production
+          docker push ${{ secrets.DOCKERHUB_USERNAME }}/heart-disease-backend:production
+
+          docker pull ${{ secrets.DOCKERHUB_USERNAME }}/heart-disease-frontend:staging
+          docker tag ${{ secrets.DOCKERHUB_USERNAME }}/heart-disease-frontend:staging \
+                     ${{ secrets.DOCKERHUB_USERNAME }}/heart-disease-frontend:production
+          docker push ${{ secrets.DOCKERHUB_USERNAME }}/heart-disease-frontend:production
+
+      - name: Verify production model stage
+        env:
+          MLFLOW_TRACKING_URI: ${{ secrets.MLFLOW_TRACKING_URI }}
+          MLFLOW_TRACKING_USERNAME: ${{ secrets.MLFLOW_TRACKING_USERNAME }}
+          MLFLOW_TRACKING_PASSWORD: ${{ secrets.DAGSHUB_TOKEN }}
+          MODEL_NAME: ${{ secrets.MODEL_NAME }}
+        run: |
+          pip install mlflow
+          python - << 'EOF'
+          import os
+          import mlflow
+          from mlflow.tracking import MlflowClient
+
+          mlflow.set_tracking_uri(os.environ["MLFLOW_TRACKING_URI"])
+          os.environ["MLFLOW_TRACKING_USERNAME"] = os.environ["MLFLOW_TRACKING_USERNAME"]
+          os.environ["MLFLOW_TRACKING_PASSWORD"] = os.environ["MLFLOW_TRACKING_PASSWORD"]
+
+          client = MlflowClient()
+          model_name = os.environ["MODEL_NAME"]
+          versions = client.get_latest_versions(model_name, stages=["Production"])
+
+          if versions:
+              v = versions[0]
+              print(f"Production model: {model_name} v{v.version}")
+              print(f"Run ID: {v.run_id}")
+              print("Production deployment verified!")
+          else:
+              print("No Production model found!")
+              exit(1)
+          EOF

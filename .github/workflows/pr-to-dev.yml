@@ -1,10 +1,52 @@
 name: PR to Dev
+
 on:
   pull_request:
     branches: [dev]
+
 jobs:
-  placeholder:
+  test:
     runs-on: ubuntu-latest
+
     steps:
-      - name: Placeholder
-        run: echo "CI pipeline coming soon"
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install dependencies
+        run: |
+          pip install -r backend/requirements.txt
+          pip install pytest httpx
+
+      - name: Run unit tests
+        env:
+          MLFLOW_TRACKING_URI: ${{ secrets.MLFLOW_TRACKING_URI }}
+          MLFLOW_TRACKING_USERNAME: ${{ secrets.MLFLOW_TRACKING_USERNAME }}
+          MLFLOW_TRACKING_PASSWORD: ${{ secrets.DAGSHUB_TOKEN }}
+          MODEL_NAME: ${{ secrets.MODEL_NAME }}
+          MODEL_STAGE: ${{ secrets.MODEL_STAGE }}
+        run: |
+          cd backend
+          python -m pytest tests/test_unit.py -v
+
+      - name: Run integration tests
+        env:
+          MLFLOW_TRACKING_URI: ${{ secrets.MLFLOW_TRACKING_URI }}
+          MLFLOW_TRACKING_USERNAME: ${{ secrets.MLFLOW_TRACKING_USERNAME }}
+          MLFLOW_TRACKING_PASSWORD: ${{ secrets.DAGSHUB_TOKEN }}
+          MODEL_NAME: ${{ secrets.MODEL_NAME }}
+          MODEL_STAGE: ${{ secrets.MODEL_STAGE }}
+        run: |
+          cd backend
+          python -m pytest tests/test_integration.py -v
+
+      - name: Build Docker images (no push)
+        run: |
+          docker build -t heart-disease-backend:test ./backend
+          docker build \
+            --build-arg VITE_BACKEND_URL=http://localhost:8000 \
+            -t heart-disease-frontend:test ./frontend
