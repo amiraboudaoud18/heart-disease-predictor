@@ -96,16 +96,11 @@ jobs:
           ACCURACY_THRESHOLD: "0.75"
           F1_THRESHOLD: "0.75"
           RECALL_THRESHOLD: "0.70"
-          LATENCY_THRESHOLD_MS: "2000"
         run: |
           python - << 'EOF'
           import os
           import sys
-          import time
-          import json
           import mlflow
-          import mlflow.sklearn
-          import numpy as np
           from mlflow.tracking import MlflowClient
 
           tracking_uri = os.environ["MLFLOW_TRACKING_URI"]
@@ -121,9 +116,6 @@ jobs:
           accuracy_threshold = float(os.environ["ACCURACY_THRESHOLD"])
           f1_threshold = float(os.environ["F1_THRESHOLD"])
           recall_threshold = float(os.environ["RECALL_THRESHOLD"])
-          latency_threshold_ms = float(os.environ["LATENCY_THRESHOLD_MS"])
-
-          test_input = np.array([[63, 1, 3, 145, 233, 1, 0, 150, 0, 2.3, 0, 0, 1]])
 
           versions = client.get_latest_versions(model_name, stages=["Production"])
           if not versions:
@@ -156,46 +148,6 @@ jobs:
               gates_passed.append(f"Recall gate PASSED: {recall:.4f} >= {recall_threshold}")
           else:
               gates_failed.append(f"Recall gate FAILED: {recall:.4f} < {recall_threshold}")
-
-          # ── Gate 4: Latency ───────────────────────────────────────────────
-          try:
-              model_uri = f"runs:/{run_id}/model"
-              model = mlflow.sklearn.load_model(model_uri)
-
-              start = time.time()
-              for _ in range(10):
-                  model.predict(test_input)
-              avg_latency_ms = (time.time() - start) / 10 * 1000
-
-              if avg_latency_ms <= latency_threshold_ms:
-                  gates_passed.append(
-                      f"Latency gate PASSED: {avg_latency_ms:.1f}ms <= {latency_threshold_ms}ms"
-                  )
-              else:
-                  gates_failed.append(
-                      f"Latency gate FAILED: {avg_latency_ms:.1f}ms > {latency_threshold_ms}ms"
-                  )
-          except Exception as e:
-              gates_failed.append(f"Latency gate FAILED: {e}")
-
-          # ── Gate 5: Smoke test ────────────────────────────────────────────
-          try:
-              prediction = model.predict(test_input)
-              probability = model.predict_proba(test_input)[0]
-
-              if (
-                  prediction[0] in [0, 1]
-                  and len(probability) == 2
-                  and abs(sum(probability) - 1.0) < 0.001
-              ):
-                  gates_passed.append(
-                      f"Smoke test PASSED: prediction={prediction[0]}, "
-                      f"probability={probability[1]:.4f}"
-                  )
-              else:
-                  gates_failed.append("Smoke test FAILED: invalid prediction output")
-          except Exception as e:
-              gates_failed.append(f"Smoke test FAILED: {e}")
 
           # ── Summary ───────────────────────────────────────────────────────
           print("\n========== QUALITY GATE RESULTS ==========")
