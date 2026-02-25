@@ -20,7 +20,14 @@ jobs:
       - name: Install dependencies
         run: |
           pip install -r backend/requirements.txt
-          pip install pytest httpx
+          pip install pytest httpx dvc
+
+      - name: Pull data from DVC
+        run: |
+          dvc remote modify origin --local auth basic
+          dvc remote modify origin --local user ${{ secrets.MLFLOW_TRACKING_USERNAME }}
+          dvc remote modify origin --local password ${{ secrets.DAGSHUB_TOKEN }}
+          dvc pull
 
       - name: Run full test suite
         env:
@@ -101,7 +108,6 @@ jobs:
           model_name = os.environ["MODEL_NAME"]
           threshold = float(os.environ["ACCURACY_THRESHOLD"])
 
-          # Get latest production model metrics
           versions = client.get_latest_versions(model_name, stages=["Production"])
           if not versions:
               print("No Production model found!")
