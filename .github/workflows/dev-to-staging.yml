@@ -27,7 +27,8 @@ jobs:
           dvc remote modify origin --local auth basic
           dvc remote modify origin --local user ${{ secrets.MLFLOW_TRACKING_USERNAME }}
           dvc remote modify origin --local password ${{ secrets.DAGSHUB_TOKEN }}
-          dvc pull
+          dvc pull --verbose
+          ls -la data/
 
       - name: Run full test suite
         env:
@@ -84,7 +85,7 @@ jobs:
           python-version: "3.11"
 
       - name: Install MLflow
-        run: pip install mlflow dagshub
+        run: pip install mlflow dagshub scikit-learn
 
       - name: Run quality gates
         env:
@@ -107,9 +108,13 @@ jobs:
           import numpy as np
           from mlflow.tracking import MlflowClient
 
-          mlflow.set_tracking_uri(os.environ["MLFLOW_TRACKING_URI"])
-          os.environ["MLFLOW_TRACKING_USERNAME"] = os.environ["MLFLOW_TRACKING_USERNAME"]
-          os.environ["MLFLOW_TRACKING_PASSWORD"] = os.environ["MLFLOW_TRACKING_PASSWORD"]
+          tracking_uri = os.environ["MLFLOW_TRACKING_URI"]
+          username = os.environ["MLFLOW_TRACKING_USERNAME"]
+          password = os.environ["MLFLOW_TRACKING_PASSWORD"]
+
+          mlflow.set_tracking_uri(tracking_uri)
+          os.environ["MLFLOW_TRACKING_USERNAME"] = username
+          os.environ["MLFLOW_TRACKING_PASSWORD"] = password
 
           client = MlflowClient()
           model_name = os.environ["MODEL_NAME"]
