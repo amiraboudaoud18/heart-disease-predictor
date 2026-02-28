@@ -5,7 +5,66 @@ on:
     branches: [main]
 
 jobs:
+  promote-model:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install MLflow
+        run: pip install mlflow dagshub
+
+      - name: Promote latest model to Production
+        env:
+          MLFLOW_TRACKING_URI: ${{ secrets.MLFLOW_TRACKING_URI }}
+          MLFLOW_TRACKING_USERNAME: ${{ secrets.MLFLOW_TRACKING_USERNAME }}
+          MLFLOW_TRACKING_PASSWORD: ${{ secrets.DAGSHUB_TOKEN }}
+          MODEL_NAME: ${{ secrets.MODEL_NAME }}
+        run: |
+          python - << 'EOF'
+          import os
+          import sys
+          import mlflow
+          from mlflow.tracking import MlflowClient
+
+          mlflow.set_tracking_uri(os.environ["MLFLOW_TRACKING_URI"])
+          os.environ["MLFLOW_TRACKING_USERNAME"] = os.environ["MLFLOW_TRACKING_USERNAME"]
+          os.environ["MLFLOW_TRACKING_PASSWORD"] = os.environ["MLFLOW_TRACKING_PASSWORD"]
+
+          client = MlflowClient()
+          model_name = os.environ["MODEL_NAME"]
+
+          # Get latest registered version
+          versions = client.search_model_versions(f"name='{model_name}'")
+          if not versions:
+              print("No model versions found!")
+              sys.exit(1)
+
+          latest = sorted(versions, key=lambda v: int(v.version), reverse=True)[0]
+          print(f"Latest version: {latest.version}")
+          print(f"Current stage: {latest.current_stage}")
+
+          # Only promote if not already in Production
+          if latest.current_stage != "Production":
+              client.transition_model_version_stage(
+                  name=model_name,
+                  version=latest.version,
+                  stage="Production",
+                  archive_existing_versions=True
+              )
+              print(f"Promoted {model_name} v{latest.version} to Production!")
+          else:
+              print(f"{model_name} v{latest.version} is already in Production")
+          EOF
+
   deploy-production:
+    needs: promote-model
     runs-on: ubuntu-latest
 
     steps:
@@ -38,7 +97,7 @@ jobs:
           build-args: |
             VITE_BACKEND_URL=${{ secrets.PRODUCTION_BACKEND_URL }}
 
-      - name: Verify production model stage
+      - name: Verify production model
         env:
           MLFLOW_TRACKING_URI: ${{ secrets.MLFLOW_TRACKING_URI }}
           MLFLOW_TRACKING_USERNAME: ${{ secrets.MLFLOW_TRACKING_USERNAME }}

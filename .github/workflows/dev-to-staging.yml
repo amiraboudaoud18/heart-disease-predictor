@@ -5,7 +5,47 @@ on:
     branches: [staging]
 
 jobs:
+  train:
+    runs-on: ubuntu-latest
+    if: |
+      contains(github.event.head_commit.modified, 'backend/train.py') ||
+      contains(github.event.head_commit.modified, 'backend/app/preprocess.py') ||
+      contains(github.event.head_commit.modified, 'data/heart.csv.dvc')
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install dependencies
+        run: |
+          pip install -r backend/requirements.txt
+          pip install dvc
+
+      - name: Pull data from DVC
+        run: |
+          dvc remote modify origin --local auth basic
+          dvc remote modify origin --local user ${{ secrets.MLFLOW_TRACKING_USERNAME }}
+          dvc remote modify origin --local password ${{ secrets.DAGSHUB_TOKEN }}
+          dvc pull
+
+      - name: Train and register model
+        env:
+          MLFLOW_TRACKING_URI: ${{ secrets.MLFLOW_TRACKING_URI }}
+          MLFLOW_TRACKING_USERNAME: ${{ secrets.MLFLOW_TRACKING_USERNAME }}
+          MLFLOW_TRACKING_PASSWORD: ${{ secrets.DAGSHUB_TOKEN }}
+          MODEL_NAME: ${{ secrets.MODEL_NAME }}
+          MODEL_STAGE: Production
+        run: |
+          cd backend
+          python train.py
+
   test:
+    needs: train
+    if: always()
     runs-on: ubuntu-latest
 
     steps:
