@@ -7,10 +7,6 @@ on:
 jobs:
   train:
     runs-on: ubuntu-latest
-    if: |
-      contains(github.event.head_commit.modified, 'backend/train.py') ||
-      contains(github.event.head_commit.modified, 'backend/app/preprocess.py') ||
-      contains(github.event.head_commit.modified, 'data/heart.csv.dvc')
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
