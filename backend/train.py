@@ -8,7 +8,7 @@ from pathlib import Path
 import mlflow
 import mlflow.sklearn
 from dotenv import load_dotenv
-from sklearn.linear_model import LogisticRegression
+from sklearn.ensemble import RandomForestClassifier
 from sklearn.metrics import accuracy_score, f1_score, precision_score, recall_score
 
 # Load environment variables
@@ -64,12 +64,11 @@ def train(data_path: str = None):
 
     with mlflow.start_run():
         params = {
-            "C": 1.0,
-            "max_iter": 1000,
-            "solver": "lbfgs",
+            "n_estimators": 100,
+            "max_depth": 5,
             "random_state": 42,
         }
-        model = LogisticRegression(**params)
+        model = RandomForestClassifier(**params)
         model.fit(X_train, y_train)
 
         y_pred = model.predict(X_test)
@@ -90,6 +89,7 @@ def train(data_path: str = None):
         mlflow.set_tag("dvc_data_version", dvc_version)
         mlflow.set_tag("training_samples", len(X_train))
         mlflow.set_tag("data_path", data_path)
+        mlflow.set_tag("model_type", "RandomForest")
 
         os.makedirs("models", exist_ok=True)
         with open("models/scaler.pkl", "wb") as f:
