@@ -27,8 +27,7 @@ jobs:
           dvc remote modify origin --local auth basic
           dvc remote modify origin --local user ${{ secrets.MLFLOW_TRACKING_USERNAME }}
           dvc remote modify origin --local password ${{ secrets.DAGSHUB_TOKEN }}
-          dvc pull --verbose
-          ls -la data/
+          dvc pull
 
       - name: Run full test suite
         env:
@@ -49,6 +48,9 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
 
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
       - name: Login to DockerHub
         uses: docker/login-action@v3
         with:
@@ -59,6 +61,7 @@ jobs:
         uses: docker/build-push-action@v5
         with:
           context: ./backend
+          platforms: linux/amd64
           push: true
           tags: ${{ secrets.DOCKERHUB_USERNAME }}/heart-disease-backend:staging
 
@@ -66,6 +69,7 @@ jobs:
         uses: docker/build-push-action@v5
         with:
           context: ./frontend
+          platforms: linux/amd64
           push: true
           tags: ${{ secrets.DOCKERHUB_USERNAME }}/heart-disease-frontend:staging
           build-args: |
@@ -128,28 +132,24 @@ jobs:
           gates_passed = []
           gates_failed = []
 
-          # ── Gate 1: Accuracy ──────────────────────────────────────────────
           accuracy = run.data.metrics.get("accuracy", 0)
           if accuracy >= accuracy_threshold:
               gates_passed.append(f"Accuracy gate PASSED: {accuracy:.4f} >= {accuracy_threshold}")
           else:
               gates_failed.append(f"Accuracy gate FAILED: {accuracy:.4f} < {accuracy_threshold}")
 
-          # ── Gate 2: F1 Score ──────────────────────────────────────────────
           f1 = run.data.metrics.get("f1_score", 0)
           if f1 >= f1_threshold:
               gates_passed.append(f"F1 Score gate PASSED: {f1:.4f} >= {f1_threshold}")
           else:
               gates_failed.append(f"F1 Score gate FAILED: {f1:.4f} < {f1_threshold}")
 
-          # ── Gate 3: Recall ────────────────────────────────────────────────
           recall = run.data.metrics.get("recall", 0)
           if recall >= recall_threshold:
               gates_passed.append(f"Recall gate PASSED: {recall:.4f} >= {recall_threshold}")
           else:
               gates_failed.append(f"Recall gate FAILED: {recall:.4f} < {recall_threshold}")
 
-          # ── Summary ───────────────────────────────────────────────────────
           print("\n========== QUALITY GATE RESULTS ==========")
           for msg in gates_passed:
               print(f"  PASSED  {msg}")
@@ -164,3 +164,24 @@ jobs:
           else:
               print("\nAll quality gates PASSED — model is ready for production")
           EOF
+
+  deploy-staging:
+    needs: model-promotion
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Trigger Render staging redeploy
+        run: |
+          curl -s -X POST \
+            -H "Authorization: Bearer ${{ secrets.RENDER_API_KEY }}" \
+            -H "Content-Type: application/json" \
+            "https://api.render.com/v1/services/${{ secrets.RENDER_STAGING_BACKEND_ID }}/deploys" \
+            -d '{"clearCache": false}'
+
+          curl -s -X POST \
+            -H "Authorization: Bearer ${{ secrets.RENDER_API_KEY }}" \
+            -H "Content-Type: application/json" \
+            "https://api.render.com/v1/services/${{ secrets.RENDER_STAGING_FRONTEND_ID }}/deploys" \
+            -d '{"clearCache": false}'
+
+          echo "Staging redeploy triggered!"

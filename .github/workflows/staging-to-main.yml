@@ -12,6 +12,9 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
 
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
       - name: Login to DockerHub
         uses: docker/login-action@v3
         with:
@@ -25,10 +28,15 @@ jobs:
                      ${{ secrets.DOCKERHUB_USERNAME }}/heart-disease-backend:production
           docker push ${{ secrets.DOCKERHUB_USERNAME }}/heart-disease-backend:production
 
-          docker pull ${{ secrets.DOCKERHUB_USERNAME }}/heart-disease-frontend:staging
-          docker tag ${{ secrets.DOCKERHUB_USERNAME }}/heart-disease-frontend:staging \
-                     ${{ secrets.DOCKERHUB_USERNAME }}/heart-disease-frontend:production
-          docker push ${{ secrets.DOCKERHUB_USERNAME }}/heart-disease-frontend:production
+      - name: Build and push frontend (production)
+        uses: docker/build-push-action@v5
+        with:
+          context: ./frontend
+          platforms: linux/amd64
+          push: true
+          tags: ${{ secrets.DOCKERHUB_USERNAME }}/heart-disease-frontend:production
+          build-args: |
+            VITE_BACKEND_URL=${{ secrets.PRODUCTION_BACKEND_URL }}
 
       - name: Verify production model stage
         env:
@@ -60,3 +68,19 @@ jobs:
               print("No Production model found!")
               exit(1)
           EOF
+
+      - name: Trigger Render production redeploy
+        run: |
+          curl -s -X POST \
+            -H "Authorization: Bearer ${{ secrets.RENDER_API_KEY }}" \
+            -H "Content-Type: application/json" \
+            "https://api.render.com/v1/services/${{ secrets.RENDER_PRODUCTION_BACKEND_ID }}/deploys" \
+            -d '{"clearCache": false}'
+
+          curl -s -X POST \
+            -H "Authorization: Bearer ${{ secrets.RENDER_API_KEY }}" \
+            -H "Content-Type: application/json" \
+            "https://api.render.com/v1/services/${{ secrets.RENDER_PRODUCTION_FRONTEND_ID }}/deploys" \
+            -d '{"clearCache": false}'
+
+          echo "Production redeploy triggered!"
