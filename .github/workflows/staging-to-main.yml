@@ -5,7 +5,7 @@ on:
     branches: [main]
 
 jobs:
-  promote-model:
+  promote-to-production:
     runs-on: ubuntu-latest
 
     steps:
@@ -20,7 +20,7 @@ jobs:
       - name: Install MLflow
         run: pip install mlflow dagshub
 
-      - name: Promote latest model to Production
+      - name: Promote model from Staging to Production
         env:
           MLFLOW_TRACKING_URI: ${{ secrets.MLFLOW_TRACKING_URI }}
           MLFLOW_TRACKING_USERNAME: ${{ secrets.MLFLOW_TRACKING_USERNAME }}
@@ -40,31 +40,28 @@ jobs:
           client = MlflowClient()
           model_name = os.environ["MODEL_NAME"]
 
-          # Get latest registered version
-          versions = client.search_model_versions(f"name='{model_name}'")
+          # Get model in Staging stage
+          versions = client.get_latest_versions(model_name, stages=["Staging"])
           if not versions:
-              print("No model versions found!")
-              sys.exit(1)
+              print("No model in Staging stage found!")
+              print("Nothing to promote — production stays as is")
+              sys.exit(0)
 
-          latest = sorted(versions, key=lambda v: int(v.version), reverse=True)[0]
-          print(f"Latest version: {latest.version}")
-          print(f"Current stage: {latest.current_stage}")
+          staging_version = versions[0]
+          print(f"Promoting {model_name} v{staging_version.version} from Staging to Production")
 
-          # Only promote if not already in Production
-          if latest.current_stage != "Production":
-              client.transition_model_version_stage(
-                  name=model_name,
-                  version=latest.version,
-                  stage="Production",
-                  archive_existing_versions=True
-              )
-              print(f"Promoted {model_name} v{latest.version} to Production!")
-          else:
-              print(f"{model_name} v{latest.version} is already in Production")
+          client.transition_model_version_stage(
+              name=model_name,
+              version=staging_version.version,
+              stage="Production",
+              archive_existing_versions=True
+          )
+          print(f"Successfully promoted v{staging_version.version} to Production!")
+          print(f"Previous Production versions archived")
           EOF
 
   deploy-production:
-    needs: promote-model
+    needs: promote-to-production
     runs-on: ubuntu-latest
 
     steps:

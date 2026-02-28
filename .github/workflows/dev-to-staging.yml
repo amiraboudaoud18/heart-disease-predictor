@@ -34,10 +34,43 @@ jobs:
           MLFLOW_TRACKING_USERNAME: ${{ secrets.MLFLOW_TRACKING_USERNAME }}
           MLFLOW_TRACKING_PASSWORD: ${{ secrets.DAGSHUB_TOKEN }}
           MODEL_NAME: ${{ secrets.MODEL_NAME }}
-          MODEL_STAGE: Production
+          MODEL_STAGE: Staging
         run: |
           cd backend
           python train.py
+
+      - name: Transition new model to Staging
+        env:
+          MLFLOW_TRACKING_URI: ${{ secrets.MLFLOW_TRACKING_URI }}
+          MLFLOW_TRACKING_USERNAME: ${{ secrets.MLFLOW_TRACKING_USERNAME }}
+          MLFLOW_TRACKING_PASSWORD: ${{ secrets.DAGSHUB_TOKEN }}
+          MODEL_NAME: ${{ secrets.MODEL_NAME }}
+        run: |
+          python - << 'EOF'
+          import os
+          import mlflow
+          from mlflow.tracking import MlflowClient
+
+          mlflow.set_tracking_uri(os.environ["MLFLOW_TRACKING_URI"])
+          os.environ["MLFLOW_TRACKING_USERNAME"] = os.environ["MLFLOW_TRACKING_USERNAME"]
+          os.environ["MLFLOW_TRACKING_PASSWORD"] = os.environ["MLFLOW_TRACKING_PASSWORD"]
+
+          client = MlflowClient()
+          model_name = os.environ["MODEL_NAME"]
+
+          # Get latest registered version (just trained)
+          versions = client.search_model_versions(f"name='{model_name}'")
+          latest = sorted(versions, key=lambda v: int(v.version), reverse=True)[0]
+
+          print(f"Transitioning {model_name} v{latest.version} to Staging...")
+          client.transition_model_version_stage(
+              name=model_name,
+              version=latest.version,
+              stage="Staging",
+              archive_existing_versions=False
+          )
+          print(f"Model v{latest.version} is now in Staging stage")
+          EOF
 
   test:
     needs: train
@@ -111,7 +144,7 @@ jobs:
           build-args: |
             VITE_BACKEND_URL=${{ secrets.STAGING_BACKEND_URL }}
 
-  model-promotion:
+  quality-gates:
     needs: build-and-push
     runs-on: ubuntu-latest
 
@@ -127,7 +160,7 @@ jobs:
       - name: Install MLflow
         run: pip install mlflow dagshub scikit-learn
 
-      - name: Run quality gates
+      - name: Run quality gates on Staging model
         env:
           MLFLOW_TRACKING_URI: ${{ secrets.MLFLOW_TRACKING_URI }}
           MLFLOW_TRACKING_USERNAME: ${{ secrets.MLFLOW_TRACKING_USERNAME }}
@@ -143,13 +176,9 @@ jobs:
           import mlflow
           from mlflow.tracking import MlflowClient
 
-          tracking_uri = os.environ["MLFLOW_TRACKING_URI"]
-          username = os.environ["MLFLOW_TRACKING_USERNAME"]
-          password = os.environ["MLFLOW_TRACKING_PASSWORD"]
-
-          mlflow.set_tracking_uri(tracking_uri)
-          os.environ["MLFLOW_TRACKING_USERNAME"] = username
-          os.environ["MLFLOW_TRACKING_PASSWORD"] = password
+          mlflow.set_tracking_uri(os.environ["MLFLOW_TRACKING_URI"])
+          os.environ["MLFLOW_TRACKING_USERNAME"] = os.environ["MLFLOW_TRACKING_USERNAME"]
+          os.environ["MLFLOW_TRACKING_PASSWORD"] = os.environ["MLFLOW_TRACKING_PASSWORD"]
 
           client = MlflowClient()
           model_name = os.environ["MODEL_NAME"]
@@ -157,13 +186,17 @@ jobs:
           f1_threshold = float(os.environ["F1_THRESHOLD"])
           recall_threshold = float(os.environ["RECALL_THRESHOLD"])
 
-          versions = client.get_latest_versions(model_name, stages=["Production"])
+          # Check STAGING model — not Production
+          versions = client.get_latest_versions(model_name, stages=["Staging"])
           if not versions:
-              print("FAILED: No Production model found!")
+              print("FAILED: No Staging model found!")
               sys.exit(1)
 
           run_id = versions[0].run_id
           run = client.get_run(run_id)
+          version = versions[0].version
+
+          print(f"Evaluating model v{version} in Staging stage")
 
           gates_passed = []
           gates_failed = []
@@ -195,14 +228,14 @@ jobs:
           print(f"Passed: {len(gates_passed)}/{len(gates_passed) + len(gates_failed)}")
 
           if gates_failed:
-              print("\nQuality gates FAILED — model will not be promoted")
+              print("\nQuality gates FAILED — model stays in Staging, Production NOT affected")
               sys.exit(1)
           else:
-              print("\nAll quality gates PASSED — model is ready for production")
+              print("\nAll quality gates PASSED — ready to promote to Production")
           EOF
 
   deploy-staging:
-    needs: model-promotion
+    needs: quality-gates
     runs-on: ubuntu-latest
 
     steps:
