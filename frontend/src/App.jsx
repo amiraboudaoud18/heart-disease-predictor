@@ -143,9 +143,7 @@ export default function App() {
         )}
       </main>
 
-      <footer className="footer">
-        Model: Logistic Regression — Dataset: UCI Heart Disease — For clinical reference only
-      </footer>
+    
     </div>
   );
 }
