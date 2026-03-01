@@ -19,6 +19,7 @@ A production-grade MLOps project that trains, versions, and deploys a heart dise
 - [Tech Stack](#tech-stack)
 - [Project Structure](#project-structure)
 - [CI/CD Pipeline](#cicd-pipeline)
+- [Testing](#testing)
 - [Model Promotion Pipeline](#model-promotion-pipeline)
 - [Quality Gates](#quality-gates)
 - [Environments](#environments)
@@ -221,6 +222,66 @@ feature/* --> dev --> staging --> main
 ```
 
 All work starts on a feature branch and flows through dev, staging, and main. Direct pushes to staging and main are not recommended — changes should always flow through the branch hierarchy.
+
+
+# Testing
+
+The project includes three levels of automated testing, all executed as part of the CI/CD pipeline.
+
+### Unit Tests
+
+Test pure Python logic in isolation, without any external dependencies or running services.
+
+**What is tested:**
+- Feature scaling and normalization in `preprocess.py`
+- Input validation — correct number of features, correct data types
+- Output shape — preprocessed data returns the expected dimensions
+
+Run locally:
+```bash
+cd backend
+python -m pytest tests/test_unit.py -v
+```
+
+### Integration Tests
+
+Test the API endpoints using FastAPI's test client, with the real model loaded from MLflow.
+
+**What is tested:**
+- `GET /health` returns correct status, environment, and model stage
+- `POST /predict` with valid input returns a prediction and probability
+- `POST /predict` with missing fields returns a 422 validation error
+- `POST /predict` with invalid data types returns an appropriate error
+
+Run locally:
+```bash
+cd backend
+python -m pytest tests/test_integration.py -v
+```
+
+### End-to-End Tests
+
+Test the full request flow from API input to prediction output, simulating real usage.
+
+**What is tested:**
+- A known low-risk patient profile returns prediction 0
+- A known high-risk patient profile returns prediction 1
+- Probability values are between 0 and 1
+- Response time is within acceptable bounds
+
+Run locally:
+```bash
+cd backend
+python -m pytest tests/test_e2e.py -v
+```
+
+### Running the Full Test Suite
+```bash
+cd backend
+python -m pytest tests/ -v
+```
+
+All three test levels run automatically in the `dev-to-staging.yml` workflow on every push to the staging branch.
 
 ---
 
