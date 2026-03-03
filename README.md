@@ -208,7 +208,7 @@ If quality gates fail, the model remains in Staging stage and production is not 
 4. Verify the Production model exists in MLflow registry
 5. Trigger Render to redeploy the production environment
 
-<img src="docs/screenshots/ci_CD.png" width="700" alt="CI/CD pipelines — all workflows passing"/>
+<img src="docs/screenshots/CI_CD.png" width="700" alt="CI/CD pipelines — all workflows passing"/>
 
 
 
